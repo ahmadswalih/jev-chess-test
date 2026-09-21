@@ -165,18 +165,42 @@ p {
   white-space: nowrap;
 }
 
+/* The one-line pitch, kept visible at every width: it is the only thing on the
+   page that says what this is before the dialog opens. It wraps on a phone
+   rather than truncating, which costs a few pixels of header and is worth it. */
 .brand-text p {
   margin: 1px 0 0;
   font-size: 13px;
+  line-height: 1.35;
   color: var(--text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-@media (max-width: 420px) {
+@media (min-width: 560px) {
   .brand-text p {
-    display: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* On a phone the nav squeezes the brand into a column too narrow to read, so
+   the header stacks instead: pitch on top, nav on its own row. This costs no
+   board size -- the board is width-constrained at this breakpoint, not
+   height-constrained. */
+@media (max-width: 559px) {
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+  .brand {
+    flex: 1 1 100%;
+  }
+  .nav {
+    flex: 1 1 auto;
+  }
+  .nav-link {
+    flex: 1 1 0;
+    text-align: center;
   }
 }
 
@@ -1486,4 +1510,23 @@ td.name {
 .btn[data-variant="play"] svg {
   width: 17px;
   height: 17px;
+}
+
+/* The standing one-liner on what this is, for anyone who closed the dialog. */
+.about {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.about strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+@media (min-width: 640px) {
+  .about {
+    font-size: 13.5px;
+  }
 }

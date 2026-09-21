@@ -175,6 +175,16 @@ export default function PlayPage() {
                 </Link>
               </div>
             </section>
+
+            <section className="panel-section">
+              <div className="panel-title">
+                <span>About</span>
+              </div>
+              <p className="about">
+                One-minute blitz against <strong>Jev</strong>, TypeSafe&apos;s new decision
+                model. It never generates a move — code lists every legal one, and Jev picks.
+              </p>
+            </section>
           </div>
         </div>
       </div>

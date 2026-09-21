@@ -91,7 +91,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </span>
               <span className="brand-text">
                 <h1>Jev Chess</h1>
-                <p>1 + 0 blitz against a decision model</p>
+                <p>One-minute blitz against Jev, TypeSafe&apos;s decision model</p>
               </span>
             </Link>
             <Nav />
