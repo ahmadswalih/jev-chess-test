@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import Link from "next/link";
 import Nav from "@/components/Nav";
+import { siteUrl } from "@/lib/site";
 import "./globals.css";
 
 const inter = Inter({
@@ -10,16 +11,64 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+const TITLE = "Jev Chess — 1 minute blitz against a decision model";
+const DESCRIPTION =
+  "Play one-minute blitz against Jev, TypeSafe's System One model. It does not " +
+  "generate moves — code generates every legal move and Jev decides which one " +
+  "to play, in about half a second. Powered by loopengine.tech";
+const SHORT_DESCRIPTION =
+  "One minute each. You versus a model that judges between moves rather than generating them.";
+
 export const metadata: Metadata = {
-  title: "Jev Chess — 1 minute blitz against a decision model",
-  description:
-    "Play one-minute blitz against Jev, TypeSafe's System One model. Code generates the legal moves, Jev decides which one to play. Powered by loopengine.tech",
-  applicationName: "Jev Chess",
-  openGraph: {
-    title: "Jev Chess",
-    description: "One minute. You versus a decision model. Powered by loopengine.tech",
-    type: "website",
+  // Required for Open Graph and Twitter: relative image paths do not unfurl.
+  metadataBase: new URL(siteUrl()),
+  title: {
+    default: TITLE,
+    template: "%s — Jev Chess",
   },
+  description: DESCRIPTION,
+  applicationName: "Jev Chess",
+  authors: [{ name: "LoopEngine", url: "https://loopengine.tech" }],
+  creator: "LoopEngine",
+  publisher: "LoopEngine",
+  category: "games",
+  keywords: [
+    "chess",
+    "blitz chess",
+    "1 minute chess",
+    "Jev",
+    "TypeSafe",
+    "System One",
+    "decision model",
+    "AI chess",
+    "play chess online",
+    "loopengine",
+  ],
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "Jev Chess",
+    title: TITLE,
+    description: SHORT_DESCRIPTION,
+    url: "/",
+    locale: "en_GB",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Jev Chess — one minute each",
+    description: SHORT_DESCRIPTION,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large" },
+  },
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
+  manifest: "/manifest.webmanifest",
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { readLeaderboard } from "@/lib/db";
 import { REASON_LABELS } from "@/lib/types";
@@ -5,9 +6,25 @@ import { REASON_LABELS } from "@/lib/types";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export const metadata = {
-  title: "Leaderboard — Jev Chess",
-  description: "Who beats Jev, how often, and the reasons humans lose at one-minute chess.",
+const DESCRIPTION =
+  "Who beats Jev, how often, and the reasons humans lose at one-minute chess — " +
+  "each loss classified by Jev itself.";
+
+export const metadata: Metadata = {
+  title: "Leaderboard",
+  description: DESCRIPTION,
+  alternates: { canonical: "/leaderboard" },
+  openGraph: {
+    title: "Jev Chess leaderboard",
+    description: DESCRIPTION,
+    url: "/leaderboard",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Jev Chess leaderboard",
+    description: DESCRIPTION,
+  },
 };
 
 function formatDuration(ms: number): string {

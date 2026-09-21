@@ -241,12 +241,17 @@ connection per instance and a direct endpoint will exhaust its slots.
 Project Settings → Environment Variables, for all three environments:
 
 ```
-OPENROUTER_API_KEY = sk-or-v1-...                        (required)
-JEV_APP_URL        = https://beatjev.loopengine.tech     (optional)
-JEV_APP_NAME       = Jev Chess                           (optional)
+OPENROUTER_API_KEY   = sk-or-v1-...                        (required)
+NEXT_PUBLIC_SITE_URL = https://beatjev.loopengine.tech     (recommended)
+JEV_APP_URL          = https://beatjev.loopengine.tech     (optional)
+JEV_APP_NAME         = Jev Chess                           (optional)
 ```
 
-`OPENROUTER_API_KEY` is the only required one. Without it the game still runs,
+`OPENROUTER_API_KEY` is the only required one.
+`NEXT_PUBLIC_SITE_URL` pins the canonical URL and the absolute image URLs in
+the social cards; without it they fall back to Vercel's deployment host, which
+means a link shared from production could canonicalise to a `*.vercel.app`
+alias. Without it the game still runs,
 but the local fallback engine plays instead of Jev and a banner says so — which
 is a useful way to check a deploy is healthy before the key is in place.
 
@@ -283,7 +288,35 @@ Check it worked:
 
 - `/api/health` → `{"jevEnabled":true,"provider":"openrouter","model":"typesafe/jev-1.13"}`
 - `/leaderboard` → renders the empty state rather than an error
+- `/opengraph-image` → returns a 1200×630 PNG
 - Play one game → it appears in the standings
+
+## Social cards and metadata
+
+The Open Graph / Twitter card is generated, not a checked-in PNG:
+`app/opengraph-image.tsx` renders it with Satori at build time from the same
+colours and piece artwork as the game, so it cannot drift out of date.
+`app/twitter-image.tsx` re-exports it so `twitter:image` is emitted explicitly
+rather than relying on the `og:image` fallback.
+
+| Route | Produced by |
+| --- | --- |
+| `/opengraph-image` | `app/opengraph-image.tsx` — 1200×630 PNG |
+| `/twitter-image` | `app/twitter-image.tsx` — same image, `summary_large_image` |
+| `/icon.svg` | `app/icon.svg` — favicon and apple-touch-icon |
+| `/manifest.webmanifest` | `app/manifest.ts` |
+| `/robots.txt` | `app/robots.ts` — allows everything except `/api/` |
+| `/sitemap.xml` | `app/sitemap.ts` |
+
+Absolute URLs come from `lib/site.ts`, which prefers `NEXT_PUBLIC_SITE_URL`,
+then Vercel's deployment host, then the production domain. Satori supports
+flexbox only — no CSS grid — and needs real image bytes, so the pieces in the
+card are inlined from `public/pieces` as data URIs.
+
+After deploying, re-scrape the card so the platforms drop their cached copy:
+[X](https://cards-dev.twitter.com/validator),
+[Facebook](https://developers.facebook.com/tools/debug/),
+[LinkedIn](https://www.linkedin.com/post-inspector/).
 
 ### Function limits
 
