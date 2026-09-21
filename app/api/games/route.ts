@@ -7,6 +7,9 @@ import type { GameResult, Termination } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The POST does a Jev review before it stores the game, so it needs more than
+// the serverless default. Vercel reads this per route.
+export const maxDuration = 30;
 
 const TERMINATIONS: Termination[] = [
   "checkmate",
@@ -19,7 +22,7 @@ const TERMINATIONS: Termination[] = [
 
 export async function GET(request: Request) {
   const limit = Number(new URL(request.url).searchParams.get("limit") ?? 10);
-  const board = readLeaderboard(Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 50) : 10);
+  const board = await readLeaderboard(Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 50) : 10);
   return NextResponse.json(board, { headers: { "Cache-Control": "no-store" } });
 }
 
@@ -91,7 +94,7 @@ export async function POST(request: Request) {
 
   const id = randomUUID();
 
-  saveGame({
+  await saveGame({
     id,
     playerName: cleanName(body.playerName),
     playedAt: new Date().toISOString(),

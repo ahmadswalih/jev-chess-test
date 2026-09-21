@@ -3,6 +3,7 @@ import { chooseMove, type Difficulty } from "@/lib/jev";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 15;
 
 interface MoveRequest {
   fen?: unknown;

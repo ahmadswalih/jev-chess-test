@@ -113,9 +113,19 @@ to it is one line in `app/page.tsx`.
 
 ## Leaderboard
 
-One SQLite file, one row per finished game (`data/jev-chess.db`, path set by
-`JEV_CHESS_DB`). It tracks games played, Jev wins vs. human wins vs. draws, the
-per-player standings, and the breakdown of *why* humans lose.
+One row per finished game, tracking games played, Jev wins vs. human wins vs.
+draws, the per-player standings, and the breakdown of *why* humans lose.
+
+Storage has two interchangeable backends, chosen by environment:
+
+| Backend | When | Where |
+| --- | --- | --- |
+| **SQLite** | `DATABASE_URL` unset (the default) | `data/jev-chess.db`, path from `JEV_CHESS_DB` |
+| **Postgres** | `DATABASE_URL` set | Vercel Postgres, Neon, Supabase, or any Postgres |
+
+Set `JEV_STORE` to force one. The schema is created on first use, so a fresh
+database needs no migration step, and `lib/db/` is the only directory in the
+app that touches storage.
 
 Submitted games are replayed server-side before they are stored: a claimed
 checkmate that is not mate in the final position, or a result the moves do not
@@ -193,11 +203,105 @@ npm run start      # serve the build
 npm run typecheck  # tsc --noEmit
 ```
 
+## Deploying to Vercel
+
+Vercel runs this fine, with one hard requirement: **the leaderboard must use
+Postgres, not SQLite.** Vercel's filesystem is read-only apart from an
+ephemeral per-instance `/tmp`, so a SQLite database would be wiped on every
+deploy and disagree between concurrent instances. The chess would work; the
+leaderboard would quietly lose data.
+
+### 1. Create the database
+
+In the project's **Storage** tab, choose **Neon — Serverless Postgres**. Pick
+the region closest to your deployment region: the leaderboard page queries on
+every load, so a cross-continent hop is latency you will feel. The free plan is
+ample — this workload is a few small rows per game.
+
+Then click **Connect to Project** on the database and select this project.
+That step is what actually injects the variables; creating the database alone
+does nothing.
+
+Neon injects these automatically:
+
+| Variable | What it is | Used? |
+| --- | --- | --- |
+| `POSTGRES_URL` | Pooled connection (pgbouncer) | **Yes** — this is the one |
+| `POSTGRES_URL_NON_POOLING` | Direct connection | Only as a fallback |
+| `POSTGRES_PRISMA_URL` | Pooled, with Prisma-only query params | No — see `lib/db/postgres.ts` |
+| `POSTGRES_USER` / `_HOST` / `_PASSWORD` / `_DATABASE` | Individual parts | No |
+
+**You do not need to set `DATABASE_URL`.** The app reads `POSTGRES_URL`, which
+is already the pooled endpoint. Set `DATABASE_URL` only if you bring your own
+database, and point it at a pooled endpoint when you do — serverless opens a
+connection per instance and a direct endpoint will exhaust its slots.
+
+### 2. Set the remaining variables
+
+Project Settings → Environment Variables, for all three environments:
+
+```
+OPENROUTER_API_KEY = sk-or-v1-...                        (required)
+JEV_APP_URL        = https://beatjev.loopengine.tech     (optional)
+JEV_APP_NAME       = Jev Chess                           (optional)
+```
+
+`OPENROUTER_API_KEY` is the only required one. Without it the game still runs,
+but the local fallback engine plays instead of Jev and a banner says so — which
+is a useful way to check a deploy is healthy before the key is in place.
+
+### 3. Project settings
+
+- **Root Directory:** leave as the default (`./`). This repository's root *is*
+  the Next.js app. Only set it to `frontend` if you import a parent repo that
+  contains this directory.
+- **Framework Preset:** Next.js (detected automatically).
+- **Build / Install:** defaults are correct; no overrides needed.
+
+`better-sqlite3` is an *optional* dependency and is never required at runtime
+when Postgres is configured, so its native build cannot fail the deploy.
+
+### 4. Point the domain
+
+Add `beatjev.loopengine.tech` under Settings → Domains, then create this record
+wherever `loopengine.tech` DNS is hosted:
+
+| Type | Name | Value |
+| --- | --- | --- |
+| CNAME | `beatjev` | `cname.vercel-dns.com` |
+
+The apex and `www` stay where they are, untouched. Vercel issues the TLS
+certificate once the record resolves, usually within a few minutes.
+
+### 5. First deploy
+
+Push to the production branch and Vercel builds automatically. The `games`
+table is created on the first request that touches it, so there is no
+migration step and no seed data.
+
+Check it worked:
+
+- `/api/health` → `{"jevEnabled":true,"provider":"openrouter","model":"typesafe/jev-1.13"}`
+- `/leaderboard` → renders the empty state rather than an error
+- Play one game → it appears in the standings
+
+### Function limits
+
+Both API routes call Jev, so each declares how long it may run:
+
+| Route | `maxDuration` | Why |
+| --- | --- | --- |
+| `/api/jev/move` | 15s | One decision, budgeted at 4.5s before the local engine takes over |
+| `/api/games` | 30s | Runs the post-game review (9s budget) before storing |
+
+The serverless default is shorter than the review can need, which would kill it
+mid-flight and silently drop the loss reason.
+
 ## Notes and limits
 
 - Jev is text-only and English is where it is strongest. Everything it sees
   here is English move annotations, so that is fine.
 - Rate limits on the Decisions API are shared; a 429 is retried with backoff
   inside the move's latency budget, then the local engine plays.
-- SQLite means one writable filesystem. For a serverless deploy, swap `lib/db.ts`
-  for a hosted Postgres — it is the only file that touches storage.
+- The Postgres backend opens one connection per serverless instance and leans on
+  the provider's pooler. Point it at a pooled endpoint.

@@ -29,8 +29,8 @@ const RESULT_LABEL = {
   draw: "Draw",
 } as const;
 
-export default function LeaderboardPage() {
-  const { totals, reasons, players, recent } = readLeaderboard(20);
+export default async function LeaderboardPage() {
+  const { totals, reasons, players, recent } = await readLeaderboard(20);
 
   return (
     <main>

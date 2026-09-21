@@ -1,34 +1,36 @@
 /**
- * Leaderboard storage: one SQLite file, opened once per server process.
+ * SQLite backend — the default for local development.
  *
- * Every finished game is one row. The leaderboard views are plain aggregate
- * queries over that table, so nothing needs to be kept in sync by hand.
+ * One file, no setup, no network. It is not usable on a serverless host such
+ * as Vercel, where the filesystem is read-only and every instance gets its own
+ * ephemeral `/tmp`; see `postgres.ts` for that.
  */
 
-import Database from "better-sqlite3";
+import type BetterSqlite3 from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
+import type { GameRecord, Leaderboard, RecentRow } from "../types";
 import {
-  LOSS_REASONS,
-  REASON_LABELS,
-  type GameRecord,
-  type GameResult,
-  type Leaderboard,
-  type LossReason,
-  type PlayerRow,
-  type ReasonRow,
-  type RecentRow,
-} from "./types";
+  buildLeaderboard,
+  type PlayerCountRow,
+  type ReasonCountRow,
+  type TotalsRow,
+} from "./shape";
 
-let db: Database.Database | null = null;
+let db: BetterSqlite3.Database | null = null;
 
 function databasePath(): string {
   const configured = process.env.JEV_CHESS_DB?.trim() || "./data/jev-chess.db";
   return isAbsolute(configured) ? configured : resolve(process.cwd(), configured);
 }
 
-export function getDb(): Database.Database {
+function getDb(): BetterSqlite3.Database {
   if (db) return db;
+
+  // Required lazily so the native module is never loaded when Postgres is the
+  // configured backend -- it does not need to exist in a serverless bundle.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Database = require("better-sqlite3") as typeof BetterSqlite3;
 
   const path = databasePath();
   mkdirSync(dirname(path), { recursive: true });
@@ -67,7 +69,7 @@ export function getDb(): Database.Database {
   return db;
 }
 
-export function saveGame(record: GameRecord): void {
+export async function saveGame(record: GameRecord): Promise<void> {
   getDb()
     .prepare(
       `INSERT OR REPLACE INTO games (
@@ -87,37 +89,24 @@ export function saveGame(record: GameRecord): void {
     .run(record);
 }
 
-export function readLeaderboard(limit = 10): Leaderboard {
+export async function readLeaderboard(limit: number): Promise<Leaderboard> {
   const database = getDb();
 
   const totals = database
     .prepare(
       `SELECT
-         COUNT(*)                                          AS games,
-         SUM(result = 'jev')                               AS jevWins,
-         SUM(result = 'human')                             AS humanWins,
-         SUM(result = 'draw')                              AS draws,
-         COUNT(DISTINCT player_name)                       AS players,
-         COALESCE(AVG(move_count), 0)                      AS avgMoves,
-         COALESCE(AVG(duration_ms), 0)                     AS avgDurationMs
+         COUNT(*)                          AS games,
+         COALESCE(SUM(result = 'jev'), 0)   AS jevWins,
+         COALESCE(SUM(result = 'human'), 0) AS humanWins,
+         COALESCE(SUM(result = 'draw'), 0)  AS draws,
+         COUNT(DISTINCT player_name)        AS players,
+         COALESCE(AVG(move_count), 0)       AS avgMoves,
+         COALESCE(AVG(duration_ms), 0)      AS avgDurationMs
        FROM games`,
     )
-    .get() as {
-    games: number;
-    jevWins: number | null;
-    humanWins: number | null;
-    draws: number | null;
-    players: number;
-    avgMoves: number;
-    avgDurationMs: number;
-  };
+    .get() as TotalsRow;
 
-  const games = totals.games ?? 0;
-  const jevWins = totals.jevWins ?? 0;
-  const humanWins = totals.humanWins ?? 0;
-  const draws = totals.draws ?? 0;
-
-  const reasonRows = database
+  const reasons = database
     .prepare(
       `SELECT loss_reason AS reason, COUNT(*) AS count
        FROM games
@@ -125,26 +114,24 @@ export function readLeaderboard(limit = 10): Leaderboard {
        GROUP BY loss_reason
        ORDER BY count DESC`,
     )
-    .all() as { reason: LossReason; count: number }[];
-
-  const reasonTotal = reasonRows.reduce((sum, row) => sum + row.count, 0);
+    .all() as ReasonCountRow[];
 
   const players = database
     .prepare(
       `SELECT
-         player_name                                    AS playerName,
-         COUNT(*)                                       AS games,
-         SUM(result = 'human')                          AS wins,
-         SUM(result = 'draw')                           AS draws,
-         SUM(result = 'jev')                            AS losses,
+         player_name                                         AS playerName,
+         COUNT(*)                                            AS games,
+         COALESCE(SUM(result = 'human'), 0)                  AS wins,
+         COALESCE(SUM(result = 'draw'), 0)                   AS draws,
+         COALESCE(SUM(result = 'jev'), 0)                    AS losses,
          MIN(CASE WHEN result = 'human' THEN move_count END) AS bestWinMoves,
-         MAX(played_at)                                 AS lastPlayed
+         MAX(played_at)                                      AS lastPlayed
        FROM games
        GROUP BY player_name
        ORDER BY wins DESC, draws DESC, games DESC, lastPlayed DESC
        LIMIT ?`,
     )
-    .all(limit) as Omit<PlayerRow, "rank" | "winRate">[];
+    .all(limit) as PlayerCountRow[];
 
   const recent = database
     .prepare(
@@ -157,31 +144,5 @@ export function readLeaderboard(limit = 10): Leaderboard {
     )
     .all(limit) as RecentRow[];
 
-  return {
-    totals: {
-      games,
-      jevWins,
-      humanWins,
-      draws,
-      players: totals.players ?? 0,
-      jevWinRate: games ? Math.round((jevWins / games) * 1000) / 10 : 0,
-      humanWinRate: games ? Math.round((humanWins / games) * 1000) / 10 : 0,
-      avgMoves: Math.round(totals.avgMoves ?? 0),
-      avgDurationMs: Math.round(totals.avgDurationMs ?? 0),
-    },
-    reasons: reasonRows.map((row) => ({
-      reason: row.reason,
-      label: REASON_LABELS[row.reason] ?? row.reason,
-      description: LOSS_REASONS[row.reason] ?? "",
-      count: row.count,
-      share: reasonTotal ? Math.round((row.count / reasonTotal) * 1000) / 10 : 0,
-    })),
-    players: players.map((row, index) => ({
-      ...row,
-      rank: index + 1,
-      winRate: row.games ? Math.round((row.wins / row.games) * 1000) / 10 : 0,
-    })),
-    recent,
-  };
+  return buildLeaderboard(totals, reasons, players, recent);
 }
-

@@ -179,7 +179,7 @@ export async function reviewLoss(input: ReviewInput): Promise<ReviewResult> {
   };
 
   try {
-    const response = await systemOne(state, questions, { timeoutMs: 12_000, attempts: 2 });
+    const response = await systemOne(state, questions, { timeoutMs: 9_000, attempts: 2 });
     const choice = asChoice(response.answers.reason);
     const noul = asNoul(response.answers.time_pressure);
 
